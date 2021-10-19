@@ -6,14 +6,25 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "syscall.h"
 
 uint64
 sys_exit(void)
 {
   int n;
+
   if(argint(0, &n) < 0)
+  {
     return -1;
+  }
+
+  struct proc *mp = myproc();
+  if (((1 << SYS_exit) & (mp->tracemask)) != 0) {
+    printf("%d: syscall exit (%d) -> 0\n", mp->pid, n);
+  }
+
   exit(n);
+
   return 0;  // not reached
 }
 
@@ -80,6 +91,13 @@ sys_kill(void)
 
   if(argint(0, &pid) < 0)
     return -1;
+
+  struct proc *mp = myproc();
+  if (mp->pid == pid && ((1 << SYS_kill) & mp->tracemask) != 0)
+  {
+    printf("%d: syscall kill (%d) -> 0\n", mp->pid, pid);
+  }
+
   return kill(pid);
 }
 
