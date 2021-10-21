@@ -113,3 +113,16 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_trace(void)
+{
+  int tracemask = 0;
+
+  if (argint(0, &tracemask) < 0)
+    return -1;
+
+  int trace_ret = trace(tracemask);
+
+  return trace_ret;
+}
