@@ -15,7 +15,7 @@ main(int argc, char **argv)
 
   int ret = set_priority(new_priority, pid);
 
-  if (ret != 0)
+  if (ret == -1)
   {
     fprintf(2, "Failed to set the priority\n");
     exit(1);

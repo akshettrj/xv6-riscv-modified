@@ -7,7 +7,7 @@
 #include "defs.h"
 
 #ifndef SCHEDULER
-#define SCHEDULER 0
+#define SCHEDULER 2
 #endif
 
 struct cpu cpus[NCPU];
@@ -146,10 +146,12 @@ found:
   p->context.sp = p->kstack + PGSIZE;
   p->rtime = 0;
   p->etime = 0;
+  p->stime = 0;
   p->ctime = ticks;
 
   p->tracemask = 0;
   p->static_priority = 60;
+  p->niceness = 5;
 
   return p;
 }
@@ -176,7 +178,11 @@ freeproc(struct proc *p)
   p->state = UNUSED;
   p->tracemask = 0;
   p->ctime = 0;
+  p->stime = 0;
+  p->rtime = 0;
+  p->etime = 0;
   p->static_priority = 0;
+  p->niceness = 0;
 }
 
 // Create a user page table for a given process,
@@ -503,6 +509,9 @@ update_time()
     if (p->state == RUNNING) {
       p->rtime ++;
     }
+    else if (p->state == SLEEPING) {
+      p->stime ++;
+    }
     release(&p->lock);
   }
 }
@@ -524,6 +533,8 @@ scheduler(void)
   printf("Round Robin Scheduler\n");
 #elif SCHEDULER == 1
   printf("First Come First Serve Scheduler\n");
+#elif SCHEDULER == 2
+  printf("Priority Based Scheduler\n");
 #endif
 
   c->proc = 0;
@@ -531,54 +542,139 @@ scheduler(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    if (SCHEDULER == 0) {
-      // Default Round Robin Scheduling
-      for(p = proc; p < &proc[NPROC]; p++) {
-        acquire(&p->lock);
-        if(p->state == RUNNABLE) {
-          // Switch to chosen process.  It is the process's job
-          // to release its lock and then reacquire it
-          // before jumping back to us.
-          p->state = RUNNING;
-          c->proc = p;
-          swtch(&c->context, &p->context);
+#if SCHEDULER == 0
 
-          // Process is done running for now.
-          // It should have changed its p->state before coming back.
-          c->proc = 0;
-        }
-        release(&p->lock);
-      }
-    }
-    else if (SCHEDULER == 1) {
-      // FCFS Scheduling
-      // Process that was created the first
-      struct proc *oldest_process = 0;
+    // Default Round Robin Scheduling
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        p->state = RUNNING;
+        c->proc = p;
+        swtch(&c->context, &p->context);
 
-      for(p = proc; p < &proc[NPROC]; p++) {
-        acquire(&p->lock);
-        if (p->state == RUNNABLE)
-        {
-          if (oldest_process == 0 || p->ctime < oldest_process->ctime)
-            oldest_process = p;
-        }
-        release(&p->lock);
-      }
-
-      if (oldest_process == 0)
-        continue;
-
-      acquire(&oldest_process->lock);
-      if (oldest_process->state == RUNNABLE)
-      {
-        printf("RUNNING PROC with pid: %d\n", oldest_process->pid);
-        oldest_process->state = RUNNING;
-        c->proc = oldest_process;
-        swtch(&c->context, &oldest_process->context);
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
         c->proc = 0;
       }
-      release(&oldest_process->lock);
+      release(&p->lock);
     }
+
+#elif SCHEDULER == 1
+
+    // FCFS Scheduling
+    // Process that was created the first
+    struct proc *oldest_process = 0;
+
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if (p->state == RUNNABLE)
+      {
+        if (oldest_process == 0 || p->ctime < oldest_process->ctime) {
+          oldest_process == 0 ? 0 : release(&oldest_process->lock);
+          oldest_process = p;
+        }
+        else
+          release(&p->lock);
+      }
+      else
+        release(&p->lock);
+
+    }
+
+    if (oldest_process == 0)
+      continue;
+
+    // acquire(&oldest_process->lock);
+    printf("RUNNING PROC with pid: %d, START TIME: %d\n", oldest_process->pid, oldest_process->ctime);
+    oldest_process->state = RUNNING;
+    c->proc = oldest_process;
+    swtch(&c->context, &oldest_process->context);
+    c->proc = 0;
+    release(&oldest_process->lock);
+
+#elif SCHEDULER == 2
+    // Priority Based Scheduling
+    struct proc *highest_priority_proc = 0;
+    int curr_priority = 0;
+
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      /* When to update?
+       * If the highest_priority_proc is 0.
+       * If the current priority is lower than p ki.
+       */
+      if (p->state == RUNNABLE) {
+        int p_priority = 0;
+        // p_priority = max(0, min(SP - niceness + 5, 100))
+        p_priority = p->static_priority - p->niceness + 5;
+        p_priority = (p_priority > 100 ? 100 : p_priority);
+        p_priority = (p_priority <  0  ?  0  : p_priority);
+
+        if (highest_priority_proc == 0) {
+          highest_priority_proc = p;
+          curr_priority = p_priority;
+          continue;
+        }
+
+        if (p_priority < curr_priority) {
+          release(&p->lock);
+          continue;
+        }
+
+        if (p_priority > curr_priority) {
+          release(&highest_priority_proc->lock);
+          highest_priority_proc = p;
+          curr_priority = p_priority;
+          continue;
+        }
+
+        if (p->scheduled_count < highest_priority_proc->scheduled_count) {
+          release(&p->lock);
+          continue;
+        }
+
+        if (p->scheduled_count > highest_priority_proc->scheduled_count) {
+          release(&highest_priority_proc->lock);
+          highest_priority_proc = p;
+          curr_priority = p_priority;
+          continue;
+        }
+
+        if (p->ctime < highest_priority_proc->ctime) {
+          release(&highest_priority_proc->lock);
+          highest_priority_proc = p;
+          curr_priority = p_priority;
+          continue;
+        }
+
+        release(&p->lock);
+
+      }
+      else
+        release(&p->lock);
+
+    }
+
+    if (highest_priority_proc == 0)
+      continue;
+
+    // acquire(&highest_priority_proc->lock);
+    if (highest_priority_proc->state == RUNNABLE)
+    {
+      highest_priority_proc->scheduled_count += 1;
+      highest_priority_proc->state = RUNNING;
+      c->proc = highest_priority_proc;
+      swtch(&c->context, &highest_priority_proc->context);
+      c->proc = 0;
+      if (highest_priority_proc->rtime + highest_priority_proc->stime != 0)
+        highest_priority_proc->niceness = (int)((10*(highest_priority_proc->stime))/(highest_priority_proc->rtime + highest_priority_proc->stime));
+      // printf("RAN PROC with pid: %d, RUN TIME: %d, SLEEP TIME: %d, NICENESS: %d\n", highest_priority_proc->pid, highest_priority_proc->rtime, highest_priority_proc->stime, highest_priority_proc->niceness);
+    }
+    release(&highest_priority_proc->lock);
+#endif
   }
 }
 
@@ -761,6 +857,21 @@ procdump(void)
   char *state;
 
   printf("\n");
+#if SCHEDULER == 2
+  // For PBS
+  printf("PID\tPriority\tState\trtime\twtime\tnrun\n");
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->state == UNUSED)
+      continue;
+    if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
+      state = states[p->state];
+    else
+      state = "???";
+    int wtime = ticks - p->ctime - p->rtime;
+    printf("%d\t%d\t\t%s\t  %d\t%d\t%d", p->pid, p->static_priority, state, p->rtime, wtime, p->scheduled_count);
+    printf("\n");
+  }
+#elif SCHEDULER == 3
   for(p = proc; p < &proc[NPROC]; p++){
     if(p->state == UNUSED)
       continue;
@@ -771,6 +882,18 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+#else
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->state == UNUSED)
+      continue;
+    if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
+      state = states[p->state];
+    else
+      state = "???";
+    printf("%d %s %s", p->pid, state, p->name);
+    printf("\n");
+  }
+#endif
 }
 
 int
@@ -794,9 +917,14 @@ set_priority(int new_priority, int pid)
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
     if(p->pid == pid){
+      int old_priority = p->static_priority;
       p->static_priority = new_priority;
+      p->niceness = 5;
       release(&p->lock);
-      return 0;
+      if (new_priority > old_priority) {
+        yield();
+      }
+      return old_priority;
     }
     release(&p->lock);
   }
