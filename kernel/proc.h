@@ -108,4 +108,5 @@ struct proc {
 
   int tracemask;
   uint ctime;
+  int static_priority;
 };

@@ -147,6 +147,7 @@ found:
 
   p->tracemask = 0;
   p->ctime = ticks;
+  p->static_priority = 60;
 
   return p;
 }
@@ -173,6 +174,7 @@ freeproc(struct proc *p)
   p->state = UNUSED;
   p->tracemask = 0;
   p->ctime = 0;
+  p->static_priority = 0;
 }
 
 // Create a user page table for a given process,
@@ -712,4 +714,24 @@ trace(int tracemask)
   p->tracemask = tracemask;
 
   return 0;
+}
+
+int
+set_priority(int new_priority, int pid)
+{
+  if (new_priority < 0 || new_priority > 100)
+    return -1;
+
+  struct proc *p;
+
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->pid == pid){
+      p->static_priority = new_priority;
+      release(&p->lock);
+      return 0;
+    }
+    release(&p->lock);
+  }
+  return -1;
 }
