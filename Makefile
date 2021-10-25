@@ -3,7 +3,7 @@ U=user
 
 # CPU Scheduler
 ifndef SCHEDULER
-	SCHEDULER := RNDRBN
+  SCHEDULER := RNDRBN
 endif
 
 OBJS = \

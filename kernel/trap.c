@@ -80,7 +80,7 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
-  if (SCHEDULER == 0)
+  if (SCHEDULER != 1)
   {
     // give up the CPU if this is a timer interrupt.
     if(which_dev == 2)
@@ -156,7 +156,7 @@ kerneltrap()
     panic("kerneltrap");
   }
 
-  if (SCHEDULER == 0)
+  if (SCHEDULER != 1)
   {
     // give up the CPU if this is a timer interrupt.
     if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
@@ -174,6 +174,7 @@ clockintr()
 {
   acquire(&tickslock);
   ticks++;
+  update_time();
   wakeup(&ticks);
   release(&tickslock);
 }

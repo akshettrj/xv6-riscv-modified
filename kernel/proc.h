@@ -106,7 +106,10 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
-  int tracemask;
-  uint ctime;
-  int static_priority;
+  uint rtime;                  // How long the process ran
+  uint etime;                  // When was the process created
+  uint ctime;                  // When did the process exit
+
+  int tracemask;               // Mask for what system calls to trace
+  int static_priority;         // The static priority of the process for PBS
 };
