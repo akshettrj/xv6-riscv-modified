@@ -6,6 +6,10 @@
 #include "proc.h"
 #include "defs.h"
 
+#ifndef SCHEDULER
+#define SCHEDULER 0
+#endif
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -142,6 +146,7 @@ found:
   p->context.sp = p->kstack + PGSIZE;
 
   p->tracemask = 0;
+  p->ctime = ticks;
 
   return p;
 }
@@ -167,6 +172,7 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
   p->tracemask = 0;
+  p->ctime = 0;
 }
 
 // Create a user page table for a given process,
@@ -445,26 +451,64 @@ scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
 
+#if SCHEDULER == 0
+  printf("Round Robin Scheduler\n");
+#elif SCHEDULER == 1
+  printf("First Come First Serve Scheduler\n");
+#endif
+
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
+    if (SCHEDULER == 0) {
+      // Default Round Robin Scheduling
+      for(p = proc; p < &proc[NPROC]; p++) {
+        acquire(&p->lock);
+        if(p->state == RUNNABLE) {
+          // Switch to chosen process.  It is the process's job
+          // to release its lock and then reacquire it
+          // before jumping back to us.
+          p->state = RUNNING;
+          c->proc = p;
+          swtch(&c->context, &p->context);
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
+          // Process is done running for now.
+          // It should have changed its p->state before coming back.
+          c->proc = 0;
+        }
+        release(&p->lock);
+      }
+    }
+    else if (SCHEDULER == 1) {
+      // FCFS Scheduling
+      // Process that was created the first
+      struct proc *oldest_process = 0;
+
+      for(p = proc; p < &proc[NPROC]; p++) {
+        acquire(&p->lock);
+        if (p->state == RUNNABLE)
+        {
+          if (oldest_process == 0 || p->ctime < oldest_process->ctime)
+            oldest_process = p;
+        }
+        release(&p->lock);
+      }
+
+      if (oldest_process == 0)
+        continue;
+
+      acquire(&oldest_process->lock);
+      if (oldest_process->state == RUNNABLE)
+      {
+        printf("RUNNING PROC with pid: %d\n", oldest_process->pid);
+        oldest_process->state = RUNNING;
+        c->proc = oldest_process;
+        swtch(&c->context, &oldest_process->context);
         c->proc = 0;
       }
-      release(&p->lock);
+      release(&oldest_process->lock);
     }
   }
 }
