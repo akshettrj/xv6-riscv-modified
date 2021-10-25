@@ -1,6 +1,11 @@
 K=kernel
 U=user
 
+# CPU Scheduler
+ifndef SCHEDULER
+	SCHEDULER := RNDRBN
+endif
+
 OBJS = \
   $K/entry.o \
   $K/start.o \
@@ -71,7 +76,23 @@ ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]nopie'),)
 CFLAGS += -fno-pie -nopie
 endif
 
+ifeq ($(SCHEDULER), RNDRBN)
+	CFLAGS += -DSCHEDULER=0
+endif
+ifeq ($(SCHEDULER), FCFS)
+	CFLAGS += -DSCHEDULER=1
+endif
+ifeq ($(SCHEDULER), PBS)
+	CFLAGS += -DSCHEDULER=2
+endif
+ifeq ($(SCHEDULER), MLFQ)
+	CFLAGS += -DSCHEDULER=3
+endif
+
 LDFLAGS = -z max-page-size=4096
+
+flags:
+	@echo $(SCHEDULER)
 
 $K/kernel: $(OBJS) $K/kernel.ld $U/initcode
 	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS)
