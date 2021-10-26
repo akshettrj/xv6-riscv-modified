@@ -170,64 +170,108 @@ syscall(void)
 
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    p->trapframe->a0 = syscalls[num]();
+    int tm = p->tracemask;
 
-  int tm = p->tracemask;
-  int return_value = p->trapframe->a0;
-
-  if (num != SYS_trace && ((1 << num) & tm) == 0)
-    return;
-
-  printf("%d: syscall %s (", p->pid, syscalls_names[num]);
-
-  switch (num) {
-
+    int to_trace = 0;
     int arg1, arg2, arg3;
 
-    case SYS_getpid:
-    case SYS_fork:
-    case SYS_uptime:
-      break;
-
-    case SYS_wait:
-    case SYS_pipe:
-    case SYS_chdir:
-    case SYS_sleep:
-    case SYS_unlink:
-    case SYS_dup:
-    case SYS_mkdir:
-    case SYS_trace:
-    case SYS_kill:
-    case SYS_close:
-    case SYS_sbrk:
+    if (num == SYS_trace) {
       argint(0, &arg1);
-      printf("%d", arg1);
-      break;
+      if (((1 << SYS_trace) & arg1) != 0)
+        to_trace = 1;
+    }
+    else if (((1 << num) & tm) != 0)
+      to_trace = 1;
 
-    case SYS_fstat:
-    case SYS_exec:
-    case SYS_link:
-    case SYS_open:
-    case SYS_set_priority:
-      argint(0, &arg1);
-      argint(1, &arg2);
-      printf("%d %d", arg1, arg2);
-      break;
+    if (to_trace == 1) {
+      switch (num) {
 
-    case SYS_write:
-    case SYS_read:
-    case SYS_mknod:
-      argint(0, &arg1);
-      argint(1, &arg2);
-      argint(2, &arg3);
-      printf("%d %d %d", arg1, arg2, arg3);
-      break;
+        case SYS_getpid:
+        case SYS_fork:
+        case SYS_uptime:
+        break;
 
-    default:
-      break;
-  }
+        case SYS_wait:
+        case SYS_pipe:
+        case SYS_chdir:
+        case SYS_sleep:
+        case SYS_unlink:
+        case SYS_dup:
+        case SYS_mkdir:
+        case SYS_trace:
+        case SYS_kill:
+        case SYS_close:
+        case SYS_sbrk:
+        argint(0, &arg1);
+        break;
 
-  printf(") -> %d\n", return_value);
+        case SYS_fstat:
+        case SYS_exec:
+        case SYS_link:
+        case SYS_open:
+        case SYS_set_priority:
+        argint(0, &arg1);
+        argint(1, &arg2);
+        break;
+
+        case SYS_write:
+        case SYS_read:
+        case SYS_mknod:
+        argint(0, &arg1);
+        argint(1, &arg2);
+        argint(2, &arg3);
+        break;
+
+        default:
+        break;
+      }
+    }
+
+    p->trapframe->a0 = syscalls[num]();
+
+    if (to_trace == 1) {
+      printf("%d: syscall %s (", p->pid, syscalls_names[num]);
+
+      switch (num) {
+
+        case SYS_getpid:
+        case SYS_fork:
+        case SYS_uptime:
+        break;
+
+        case SYS_wait:
+        case SYS_pipe:
+        case SYS_chdir:
+        case SYS_sleep:
+        case SYS_unlink:
+        case SYS_dup:
+        case SYS_mkdir:
+        case SYS_trace:
+        case SYS_kill:
+        case SYS_close:
+        case SYS_sbrk:
+        printf("%d", arg1);
+        break;
+
+        case SYS_fstat:
+        case SYS_exec:
+        case SYS_link:
+        case SYS_open:
+        case SYS_set_priority:
+        printf("%d %d", arg1, arg2);
+        break;
+
+        case SYS_write:
+        case SYS_read:
+        case SYS_mknod:
+        printf("%d %d %d", arg1, arg2, arg3);
+        break;
+
+        default:
+        break;
+      }
+      printf(") -> %d\n", p->trapframe->a0);
+    }
 
   } else {
     printf("%d %s: unknown sys call %d\n",
