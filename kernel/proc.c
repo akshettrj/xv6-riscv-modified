@@ -631,12 +631,12 @@ scheduler(void)
           continue;
         }
 
-        if (p->scheduled_count < highest_priority_proc->scheduled_count) {
+        if (p->scount < highest_priority_proc->scount) {
           release(&p->lock);
           continue;
         }
 
-        if (p->scheduled_count > highest_priority_proc->scheduled_count) {
+        if (p->scount > highest_priority_proc->scount) {
           release(&highest_priority_proc->lock);
           highest_priority_proc = p;
           curr_priority = p_priority;
@@ -664,7 +664,7 @@ scheduler(void)
     // acquire(&highest_priority_proc->lock);
     if (highest_priority_proc->state == RUNNABLE)
     {
-      highest_priority_proc->scheduled_count += 1;
+      highest_priority_proc->scount += 1;
       highest_priority_proc->state = RUNNING;
       c->proc = highest_priority_proc;
       swtch(&c->context, &highest_priority_proc->context);
@@ -868,7 +868,7 @@ procdump(void)
     else
       state = "???";
     int wtime = ticks - p->ctime - p->rtime;
-    printf("%d\t%d\t\t%s\t  %d\t%d\t%d", p->pid, p->static_priority, state, p->rtime, wtime, p->scheduled_count);
+    printf("%d\t%d\t\t%s\t  %d\t%d\t%d", p->pid, p->static_priority, state, p->rtime, wtime, p->scount);
     printf("\n");
   }
 #elif SCHEDULER == 3

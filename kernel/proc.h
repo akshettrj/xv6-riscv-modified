@@ -111,7 +111,7 @@ struct proc {
   int ctime;                   // When did the process exit
   int stime;                   // How long the proces slept
 
-  int scheduled_count;         // How many times it has been scheduled
+  int scount;                  // How many times it has been scheduled
 
   int tracemask;               // Mask for what system calls to trace
   int static_priority;         // The static priority of the process for PBS
