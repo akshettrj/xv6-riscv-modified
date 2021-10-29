@@ -595,7 +595,7 @@ scheduler(void)
     c->proc = 0;
     release(&oldest_process->lock);
 
-#elif SCHEDULER == 2
+#elif SCHEDULER == S_PBS
     // Priority Based Scheduling
     struct proc *highest_priority_proc = 0;
     int curr_priority = 0;
@@ -619,24 +619,24 @@ scheduler(void)
           continue;
         }
 
-        if (p_priority < curr_priority) {
+        if (p_priority > curr_priority) {
           release(&p->lock);
           continue;
         }
 
-        if (p_priority > curr_priority) {
+        if (p_priority < curr_priority) {
           release(&highest_priority_proc->lock);
           highest_priority_proc = p;
           curr_priority = p_priority;
           continue;
         }
 
-        if (p->scheduled_count < highest_priority_proc->scheduled_count) {
+        if (p->scheduled_count > highest_priority_proc->scheduled_count) {
           release(&p->lock);
           continue;
         }
 
-        if (p->scheduled_count > highest_priority_proc->scheduled_count) {
+        if (p->scheduled_count < highest_priority_proc->scheduled_count) {
           release(&highest_priority_proc->lock);
           highest_priority_proc = p;
           curr_priority = p_priority;
