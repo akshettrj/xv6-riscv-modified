@@ -6,10 +6,6 @@
 #include "proc.h"
 #include "defs.h"
 
-#ifndef SCHEDULER
-#define SCHEDULER 0
-#endif
-
 struct spinlock tickslock;
 uint ticks;
 
@@ -80,12 +76,21 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
-  if (SCHEDULER != 1 && SCHEDULER != 2)
-  {
-    // give up the CPU if this is a timer interrupt.
-    if(which_dev == 2)
+#if SCHEDULER == S_RR
+  // give up the CPU if this is a timer interrupt.
+  if(which_dev == 2)
+    yield();
+#elif SCHEDULER == S_MLFQ
+  if (which_dev == 2) {
+    int timeslice = 1 << (p->qnum);
+    int is_in_last_queue = (p->qnum == NUM_OF_QUEUES - 1);
+    int has_exceeded_time_slice = (!is_in_last_queue) && (p->cqrtime >= timeslice);
+    if (is_in_last_queue || has_exceeded_time_slice) {
+      p->has_over_shoot = 1;
       yield();
+    }
   }
+#endif
 
   usertrapret();
 }
@@ -156,12 +161,22 @@ kerneltrap()
     panic("kerneltrap");
   }
 
-  if (SCHEDULER != 1 && SCHEDULER != 2)
-  {
+#if SCHEDULER == S_RR
     // give up the CPU if this is a timer interrupt.
     if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
       yield();
-  }
+#elif SCHEDULER == S_MLFQ
+    struct proc *p = myproc();
+    if (which_dev == 2 && p != 0 && p->state == RUNNING) {
+      int timeslice = 1 << (p->qnum);
+      int is_in_last_queue = (p->qnum == NUM_OF_QUEUES - 1);
+      int has_exceeded_time_slice = (!is_in_last_queue) && (p->cqrtime >= timeslice);
+      if (is_in_last_queue || has_exceeded_time_slice) {
+        p->has_over_shoot = 1;
+        yield();
+      }
+    }
+#endif
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
