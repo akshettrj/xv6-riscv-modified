@@ -9,6 +9,15 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+#define S_RR    0
+#define S_FCFS  1
+#define S_PBS   2
+#define S_MLFQ  3
+
+#ifndef SCHEDULER
+#define SCHEDULER S_MLFQ
+#endif
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -108,6 +117,10 @@ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 void            update_time(void);
+#if SCHEDULER == S_MLFQ
+void            add_to_proc_queue(struct proc*, int);
+void            remove_from_proc_queue(struct proc*, int);
+#endif
 
 // swtch.S
 void            swtch(struct context*, struct context*);

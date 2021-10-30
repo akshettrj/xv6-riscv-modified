@@ -106,14 +106,43 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
-  int rtime;                   // How long the process ran
-  int etime;                   // When was the process created
-  int ctime;                   // When did the process exit
-  int stime;                   // How long the proces slept
+  // How long the process ran
+  uint rtime;
+  // When was the process created
+  uint etime;
+  // When did the process exit
+  uint ctime;
+  // How long the proces slept
+  uint stime;
+  // How many times it has been scheduled
+  int scount;
 
-  int scount;                  // How many times it has been scheduled
+  // Mask for what system calls to trace
+  int tracemask;
+  // The static priority of the process for PBS
+  int static_priority;
+  // Niceness used for PBS
+  int niceness;
 
-  int tracemask;               // Mask for what system calls to trace
-  int static_priority;         // The static priority of the process for PBS
-  int niceness;                // Niceness used for PBS
+  // The current queue of the process (MLFQ Scheduler)
+  int qnum;
+  // Queue wait times (MLFQ Scheduler)
+  uint qwtimes[NUM_OF_QUEUES];
+
+  // Queue run times (MLFQ Scheduler)
+  uint qrtimes[NUM_OF_QUEUES];
+  // The time waited in the current queue (MLFQ Scheduler)
+  uint cqwtime;
+  // The time ran in the current queue (MLFQ Scheduler)
+  uint cqrtime;
+
+  // If the process has taken more than the time assigned
+  int has_over_shoot;
+
+};
+
+struct Queue
+{
+  struct proc *proc_arr[NPROC];
+  int count;
 };

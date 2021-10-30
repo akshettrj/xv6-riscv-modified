@@ -6,10 +6,6 @@
 #include "proc.h"
 #include "defs.h"
 
-#ifndef SCHEDULER
-#define SCHEDULER 2
-#endif
-
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -21,6 +17,8 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
+
+struct Queue proc_queue[NUM_OF_QUEUES];
 
 extern char trampoline[]; // trampoline.S
 
@@ -50,6 +48,17 @@ proc_mapstacks(pagetable_t kpgtbl) {
 void
 procinit(void)
 {
+
+#if SCHEDULER == S_RR
+  printf("Round Robin Scheduler\n");
+#elif SCHEDULER == S_FCFS
+  printf("First Come First Serve Scheduler\n");
+#elif SCHEDULER == S_PBS
+  printf("Priority Based Scheduler\n");
+#elif SCHEDULER == S_MLFQ
+  printf("MLFQ Scheduler\n");
+#endif
+
   struct proc *p;
 
   initlock(&pid_lock, "nextpid");
@@ -58,6 +67,14 @@ procinit(void)
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
   }
+#if SCHEDULER == S_MLFQ
+  for (int i=0; i<NUM_OF_QUEUES; i++) {
+    for (int j=0; j<NPROC; j++) {
+      proc_queue[i].proc_arr[j] = 0;
+    }
+    proc_queue[i].count = 0;
+  }
+#endif
 }
 
 // Must be called with interrupts disabled,
@@ -152,6 +169,15 @@ found:
   p->tracemask = 0;
   p->static_priority = 60;
   p->niceness = 5;
+  p->scount = 0;
+  p->qnum = -1;
+  for (int i=0; i<NUM_OF_QUEUES; i++) {
+    p->qwtimes[i] = 0;
+    p->qrtimes[i] = 0;
+  }
+  p->cqwtime = 0;
+  p->cqrtime = 0;
+  p->has_over_shoot = 0;
 
   return p;
 }
@@ -181,8 +207,17 @@ freeproc(struct proc *p)
   p->stime = 0;
   p->rtime = 0;
   p->etime = 0;
+  p->scount = 0;
   p->static_priority = 0;
   p->niceness = 0;
+  p->qnum = 0;
+  for (int i=0; i<NUM_OF_QUEUES; i++) {
+    p->qwtimes[i] = 0;
+    p->qrtimes[i] = 0;
+  }
+  p->cqwtime = 0;
+  p->cqrtime = 0;
+  p->has_over_shoot = 0;
 }
 
 // Create a user page table for a given process,
@@ -263,6 +298,10 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+#if SCHEDULER == S_MLFQ
+  add_to_proc_queue(p, 0);
+#endif
+
   release(&p->lock);
 }
 
@@ -332,6 +371,11 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+
+#if SCHEDULER == S_MLFQ
+  add_to_proc_queue(np, 0);
+#endif
+
   release(&np->lock);
 
   np->tracemask = p->tracemask;
@@ -508,10 +552,20 @@ update_time()
     acquire(&p->lock);
     if (p->state == RUNNING) {
       p->rtime ++;
+#if SCHEDULER == S_MLFQ
+      p->qrtimes[p->qnum]++;
+      p->cqrtime++;
+#endif
     }
     else if (p->state == SLEEPING) {
       p->stime ++;
     }
+#if SCHEDULER == S_MLFQ
+    if (p->state == RUNNABLE) {
+      p->qwtimes[p->qnum]++;
+      p->cqwtime ++;
+    }
+#endif
     release(&p->lock);
   }
 }
@@ -528,21 +582,13 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-
-#if SCHEDULER == 0
-  printf("Round Robin Scheduler\n");
-#elif SCHEDULER == 1
-  printf("First Come First Serve Scheduler\n");
-#elif SCHEDULER == 2
-  printf("Priority Based Scheduler\n");
-#endif
-
   c->proc = 0;
+
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-#if SCHEDULER == 0
+#if SCHEDULER == S_RR
 
     // Default Round Robin Scheduling
     for(p = proc; p < &proc[NPROC]; p++) {
@@ -562,7 +608,7 @@ scheduler(void)
       release(&p->lock);
     }
 
-#elif SCHEDULER == 1
+#elif SCHEDULER == S_FCFS
 
     // FCFS Scheduling
     // Process that was created the first
@@ -588,15 +634,17 @@ scheduler(void)
       continue;
 
     // acquire(&oldest_process->lock);
-    printf("RUNNING PROC with pid: %d, START TIME: %d\n", oldest_process->pid, oldest_process->ctime);
+    // printf("RUNNING PROC with pid: %d, START TIME: %d\n", oldest_process->pid, oldest_process->ctime);
     oldest_process->state = RUNNING;
     c->proc = oldest_process;
     swtch(&c->context, &oldest_process->context);
     c->proc = 0;
     release(&oldest_process->lock);
 
-#elif SCHEDULER == 2
+
+#elif SCHEDULER == S_PBS
     // Priority Based Scheduling
+
     struct proc *highest_priority_proc = 0;
     int curr_priority = 0;
 
@@ -674,6 +722,67 @@ scheduler(void)
       // printf("RAN PROC with pid: %d, RUN TIME: %d, SLEEP TIME: %d, NICENESS: %d\n", highest_priority_proc->pid, highest_priority_proc->rtime, highest_priority_proc->stime, highest_priority_proc->niceness);
     }
     release(&highest_priority_proc->lock);
+
+
+#elif SCHEDULER == S_MLFQ
+    // MLFQ Scheduler
+
+    // 1. Find the first non-empty queue with highest priority
+    // 2. Start the process present in it.
+    // 3. Check for overshooting
+    // 4. Check for starvation
+
+    // Check for starvation
+    for (int qnum=1; qnum < NUM_OF_QUEUES; qnum++) {
+      struct Queue *cqueue = &proc_queue[qnum];
+      for (int pnum=0; pnum < cqueue->count; pnum++) {
+        p = cqueue->proc_arr[pnum];
+        acquire(&p->lock);
+        if (p->cqwtime >= STARVATION_TICKS_LIMIT) {
+          remove_from_proc_queue(p, qnum);
+          add_to_proc_queue(p, qnum-1);
+        }
+        release(&p->lock);
+      }
+    }
+
+    // Find and run the next program
+    int proc_found = 0;
+    for (int qnum=0; qnum < NUM_OF_QUEUES; qnum++) {
+      if (proc_found == 1) break;
+
+      struct Queue *cqueue = &proc_queue[qnum];
+      for (int pnum=0; pnum < cqueue->count; pnum++) {
+        if (proc_found == 1) break;
+
+        p = cqueue->proc_arr[pnum];
+        acquire(&p->lock);
+        if (p->state == RUNNABLE) {
+          // Round Robin for last queue
+          // if (qnum != (NUM_OF_QUEUES-1))
+          proc_found = 1;
+
+          // printf("Found process %s (pid=%d) from queue (num=%d) to be runnable\n", p->name, p->pid, p->qnum);
+
+          p->state = RUNNING;
+          c->proc = p;
+          remove_from_proc_queue(p, qnum);
+          swtch(&c->context, &p->context);
+          c->proc = 0;
+
+          // printf("Returned from process\n");
+
+          // Check overshoot or completion
+          if (qnum != (NUM_OF_QUEUES-1)) {
+            if (p->has_over_shoot == 1) {
+              add_to_proc_queue(p, qnum+1);
+            }
+          }
+        }
+        release(&p->lock);
+      }
+    }
+
 #endif
   }
 }
@@ -780,6 +889,9 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+#if SCHEDULER == S_MLFQ
+        add_to_proc_queue(p, p->qnum);
+#endif
       }
       release(&p->lock);
     }
@@ -847,17 +959,17 @@ void
 procdump(void)
 {
   static char *states[] = {
-  [UNUSED]    = "unused",
-  [SLEEPING]  = "sleep ",
-  [RUNNABLE]  = "runble",
-  [RUNNING]   = "run   ",
-  [ZOMBIE]    = "zombie"
+  [UNUSED]    = "unused  ",
+  [SLEEPING]  = "sleeping",
+  [RUNNABLE]  = "runnable",
+  [RUNNING]   = "running ",
+  [ZOMBIE]    = "zombie  "
   };
   struct proc *p;
   char *state;
 
   printf("\n");
-#if SCHEDULER == 2
+#if SCHEDULER == S_PBS
   // For PBS
   printf("PID\tPriority\tState\trtime\twtime\tnrun\n");
   for(p = proc; p < &proc[NPROC]; p++){
@@ -871,7 +983,9 @@ procdump(void)
     printf("%d\t%d\t\t%s\t  %d\t%d\t%d", p->pid, p->static_priority, state, p->rtime, wtime, p->scount);
     printf("\n");
   }
-#elif SCHEDULER == 3
+#elif SCHEDULER == S_MLFQ
+  // For MLFQ
+  printf("PID\tPriority\tState\t\trtime\twtime\tnrun\tq0\tq1\tq2\tq3\tq4\n");
   for(p = proc; p < &proc[NPROC]; p++){
     if(p->state == UNUSED)
       continue;
@@ -879,7 +993,13 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s", p->pid, state, p->name);
+    if (p->state == SLEEPING)
+      printf("%d\t%d\t\t%s\t  %d\t%d\t%d", p->pid, -1, state, p->rtime, p->cqwtime, p->scount);
+    else
+      printf("%d\t%d\t\t%s\t  %d\t%d\t%d", p->pid, p->qnum, state, p->rtime, p->cqwtime, p->scount);
+    for (int qnum=0; qnum<NUM_OF_QUEUES; qnum++) {
+      printf("\t%d", p->qrtimes[qnum]);
+    }
     printf("\n");
   }
 #else
@@ -930,3 +1050,50 @@ set_priority(int new_priority, int pid)
   }
   return -1;
 }
+
+#if SCHEDULER == S_MLFQ
+// Add the process with pid p->pid to the
+// process queue number qnum
+void
+add_to_proc_queue(struct proc* p, int qnum)
+{
+  if (qnum < 0 || qnum >= NUM_OF_QUEUES)
+    return;
+
+  // printf("Added proc (pid=%d) to queue (num=%d)\n", p->pid, qnum);
+
+  p->qnum = qnum;
+  proc_queue[qnum].proc_arr[proc_queue[qnum].count] = p;
+  proc_queue[qnum].count ++;
+  p->cqwtime = 0;
+  p->cqrtime = 0;
+  p->has_over_shoot = 0;
+}
+
+void
+remove_from_proc_queue(struct proc* p, int qnum) {
+  if (qnum < 0 || qnum >= NUM_OF_QUEUES)
+    return;
+
+  // printf("Removed proc (pid=%d) from queue (num=%d)\n", p->pid, qnum);
+
+  struct Queue *q = &proc_queue[qnum];
+  for (int i=0; i<q->count; i++) {
+    if (q->proc_arr[i] == p) {
+      /*
+       * p->qnum = -1;
+       * p->cqwtime = 0;
+       * p->cqrtime = 0;
+       */
+
+      for (int j=i+1; j<q->count; j++) {
+        q->proc_arr[j-1] = q->proc_arr[j];
+        q->proc_arr[j] = 0;
+      }
+
+      q->count--;
+      break;
+    }
+  }
+}
+#endif
