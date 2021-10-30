@@ -83,9 +83,8 @@ usertrap(void)
 #elif SCHEDULER == S_MLFQ
   if (which_dev == 2) {
     int timeslice = 1 << (p->qnum);
-    int is_in_last_queue = (p->qnum == NUM_OF_QUEUES - 1);
-    int has_exceeded_time_slice = (!is_in_last_queue) && (p->cqrtime >= timeslice);
-    if (is_in_last_queue || has_exceeded_time_slice) {
+    int has_exceeded_time_slice = p->cqrtime >= timeslice;
+    if (has_exceeded_time_slice) {
       p->has_over_shoot = 1;
       yield();
     }
@@ -169,9 +168,8 @@ kerneltrap()
     struct proc *p = myproc();
     if (which_dev == 2 && p != 0 && p->state == RUNNING) {
       int timeslice = 1 << (p->qnum);
-      int is_in_last_queue = (p->qnum == NUM_OF_QUEUES - 1);
-      int has_exceeded_time_slice = (!is_in_last_queue) && (p->cqrtime >= timeslice);
-      if (is_in_last_queue || has_exceeded_time_slice) {
+      int has_exceeded_time_slice = p->cqrtime >= timeslice;
+      if (has_exceeded_time_slice) {
         p->has_over_shoot = 1;
         yield();
       }

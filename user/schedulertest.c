@@ -20,13 +20,13 @@ int main() {
     if (pid < 0)
       break;
     if (pid == 0) {
-#if SCHEDULER == 1
+#if SCHEDULER != 1
       if (n < IO) {
         sleep(200); // IO bound processes
       } else {
 #endif
         for (volatile int i = 0; i < 1000000000; i++) {} // CPU bound process
-#if SCHEDULER == 1
+#if SCHEDULER != 1
       }
 #endif
       printf("Process %d finished\n", n);

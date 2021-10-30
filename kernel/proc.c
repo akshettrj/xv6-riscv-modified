@@ -374,6 +374,9 @@ fork(void)
 
 #if SCHEDULER == S_MLFQ
   add_to_proc_queue(np, 0);
+  if (p!=0 && np->qnum > 0) {
+    yield();
+  }
 #endif
 
   release(&np->lock);
@@ -761,7 +764,7 @@ scheduler(void)
           // if (qnum != (NUM_OF_QUEUES-1))
           proc_found = 1;
 
-          // printf("Found process %s (pid=%d) from queue (num=%d) to be runnable\n", p->name, p->pid, p->qnum);
+          //printf("Found process %s (pid=%d) from queue (num=%d) to be runnable\n", p->name, p->pid, p->qnum);
 
           p->state = RUNNING;
           c->proc = p;
@@ -769,13 +772,18 @@ scheduler(void)
           swtch(&c->context, &p->context);
           c->proc = 0;
 
-          // printf("Returned from process\n");
+          //printf("Returned from process\n");
 
           // Check overshoot or completion
-          if (qnum != (NUM_OF_QUEUES-1)) {
-            if (p->has_over_shoot == 1) {
+          if (p->has_over_shoot == 1) {
+            if (qnum != (NUM_OF_QUEUES-1)) {
               add_to_proc_queue(p, qnum+1);
             }
+            else
+              add_to_proc_queue(p, qnum);
+          }
+          else if (p->state == RUNNABLE){
+            add_to_proc_queue(p, qnum);
           }
         }
         release(&p->lock);
@@ -992,7 +1000,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    if (p->state == SLEEPING)
+    if (p->state == ZOMBIE)
       printf("%d\t%d\t\t%s\t  %d\t%d\t%d", p->pid, -1, state, p->rtime, p->cqwtime, p->scount);
     else
       printf("%d\t%d\t\t%s\t  %d\t%d\t%d", p->pid, p->qnum, state, p->rtime, p->cqwtime, p->scount);
