@@ -970,7 +970,7 @@ procdump(void)
   printf("\n");
 #if SCHEDULER == S_PBS
   // For PBS
-  printf("PID\tPriority\tState\trtime\twtime\tnrun\n");
+  printf("PID\tPriority\tState\t\trtime\twtime\tnrun\n");
   for(p = proc; p < &proc[NPROC]; p++){
     if(p->state == UNUSED)
       continue;
@@ -1040,7 +1040,7 @@ set_priority(int new_priority, int pid)
       p->static_priority = new_priority;
       p->niceness = 5;
       release(&p->lock);
-      if (new_priority > old_priority) {
+      if (new_priority < old_priority) {
         yield();
       }
       return old_priority;

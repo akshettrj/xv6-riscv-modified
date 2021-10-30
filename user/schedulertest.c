@@ -37,6 +37,10 @@ int main() {
 #endif
     }
   }
+  for (volatile int i = 0; i < 1000000000; i++) {} // CPU bound process
+  set_priority(20, 11);
+  for (volatile int i = 0; i < 1000000000; i++) {} // CPU bound process
+  set_priority(5, 13);
   for(;n > 0; n--) {
     if(waitx(0,&wtime,&rtime) >= 0) {
       trtime += rtime;
