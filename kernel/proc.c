@@ -556,7 +556,6 @@ update_time()
     if (p->state == RUNNING) {
       p->rtime ++;
 #if SCHEDULER == S_MLFQ
-      p->qrtimes[p->qnum]++;
       p->cqrtime++;
 #endif
     }
@@ -567,6 +566,9 @@ update_time()
     if (p->state == RUNNABLE) {
       p->qwtimes[p->qnum]++;
       p->cqwtime ++;
+    }
+    if (p->state != ZOMBIE) {
+      p->qrtimes[p->qnum]++;
     }
 #endif
     release(&p->lock);
@@ -987,7 +989,11 @@ procdump(void)
     else
       state = "???";
     int wtime = ticks - p->ctime - p->rtime;
-    printf("%d\t%d\t\t%s\t  %d\t%d\t%d", p->pid, p->static_priority, state, p->rtime, wtime, p->scount);
+    int priority = 0;
+    priority = p->static_priority - p->niceness + 5;
+    priority = (priority > 100 ? 100 : priority);
+    priority = (priority <  0  ?  0  : priority);
+    printf("%d\t%d\t\t%s\t  %d\t%d\t%d", p->pid, priority, state, p->rtime, wtime, p->scount);
     printf("\n");
   }
 #elif SCHEDULER == S_MLFQ
@@ -1044,9 +1050,16 @@ set_priority(int new_priority, int pid)
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
     if(p->pid == pid){
-      int old_priority = p->static_priority;
+
+      int old_priority = p->static_priority + p->niceness + 5;
+      old_priority = (old_priority > 100 ? 100 : old_priority);
+      old_priority = (old_priority <  0  ?  0  : old_priority);
+
       p->static_priority = new_priority;
+
+      // Reset values
       p->niceness = 5;
+
       release(&p->lock);
       if (new_priority < old_priority) {
         yield();

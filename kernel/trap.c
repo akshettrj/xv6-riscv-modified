@@ -188,6 +188,7 @@ clockintr()
   acquire(&tickslock);
   ticks++;
   update_time();
+  procdump();
   wakeup(&ticks);
   release(&tickslock);
 }
