@@ -215,6 +215,7 @@ syscall(void)
         break;
 
         case SYS_write:
+        case SYS_waitx:
         case SYS_read:
         case SYS_mknod:
         argint(0, &arg1);
@@ -263,6 +264,7 @@ syscall(void)
 
         case SYS_write:
         case SYS_read:
+        case SYS_waitx:
         case SYS_mknod:
         printf("%d %d %d", arg1, arg2, arg3);
         break;
