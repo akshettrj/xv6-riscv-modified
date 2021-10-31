@@ -123,25 +123,56 @@
 
 #### For PBS
 
-| Field    | Description                                                        |
-|----------|--------------------------------------------------------------------|
-| PID      | The PID of the process                                             |
-| Priority | The dynamic priority of the process                                |
-| State    | The current state of the process                                   |
-| rtime    | The time for which the process has used CPU till now               |
-| wtime    | The time for which the process has waited for CPU till now         |
-| nrun     | The number of times the process has been scheduled to run till now |
+| Field      | Description                                                        |
+|------------|--------------------------------------------------------------------|
+| `PID`      | The PID of the process                                             |
+| `Priority` | The dynamic priority of the process                                |
+| `State`    | The current state of the process                                   |
+| `rtime`    | The time for which the process has used CPU till now               |
+| `wtime`    | The time for which the process has waited for CPU till now         |
+| `nrun`     | The number of times the process has been scheduled to run till now |
 
 #### For MLFQ
 
-| Field    | Description                                                                     |
-|----------|---------------------------------------------------------------------------------|
-| PID      | The PID of the process                                                          |
-| Priority | The queue number of the process (-1 if the process is in `ZOMBIE` state)        |
-| State    | The current state of the process                                                |
-| rtime    | The time for which the process has used CPU till now                            |
-| wtime    | The time for which the process has waited for CPU till now in the current queue |
-| nrun     | The number of times the process has been scheduled to run till now              |
-| q_i      | The total time the process has spent in the i^th^ queue till now                |
+| Field      | Description                                                                     |
+|------------|---------------------------------------------------------------------------------|
+| `PID`      | The PID of the process                                                          |
+| `Priority` | The queue number of the process (-1 if the process is in `ZOMBIE` state)        |
+| `State`    | The current state of the process                                                |
+| `rtime`    | The time for which the process has used CPU till now                            |
+| `wtime`    | The time for which the process has waited for CPU till now in the current queue |
+| `nrun`     | The number of times the process has been scheduled to run till now              |
+| `q_i`      | The total time the process has spent in the i^th^ queue till now                |
 
 ### Bonus
+
+* For bonus, a graph for MLFQ scheduler was made in which, the time taken by processes in each queue was captured
+* For this, the `schedulertest.c` file was used provided by the TAs
+* To extract data:
+  * `procdump()` was called as each clock interrupt
+  * `schedulertest` user-program was run and the output was extracted using `tee` command.
+* Then it was cleaned manually and parsed using python code (in the `bonus/` folder).
+* Two graphs are there:
+  * One with the `STARVATION_TICKS_LIMIT` set as 100
+  * One with the `STARVATION_TICKS_LIMIT` set as 40
+
+
+### Benchmarking
+
+1. Number of CPUS = 3
+
+| Scheduler                  | Avg. Run Time | Avg. Wait Time |
+|----------------------------|--------------:|---------------:|
+| Round-Robin                |           121 |             20 |
+| First-Come-First-Serve     |            74 |             44 |
+| Priority Based             |           118 |             22 |
+| Multi-Level Feedback Queue |             - |              - |
+
+2. Number of CPUS = 1
+
+| Scheduler                  | Avg. Run Time | Avg. Wait Time |
+|----------------------------|--------------:|---------------:|
+| Round-Robin                |           200 |             19 |
+| First-Come-First-Serve     |           262 |             40 |
+| Priority Based             |           264 |             20 |
+| Multi-Level Feedback Queue |           196 |             20 |
