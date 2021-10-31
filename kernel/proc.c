@@ -748,6 +748,7 @@ scheduler(void)
         if (p->cqwtime >= STARVATION_TICKS_LIMIT) {
           remove_from_proc_queue(p, qnum);
           add_to_proc_queue(p, qnum-1);
+          pnum--;
         }
         release(&p->lock);
       }
