@@ -162,6 +162,7 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
   p->rtime = 0;
+  p->pbsrtime = 0;
   p->etime = 0;
   p->stime = 0;
   p->ctime = ticks;
@@ -206,6 +207,7 @@ freeproc(struct proc *p)
   p->ctime = 0;
   p->stime = 0;
   p->rtime = 0;
+  p->pbsrtime = 0;
   p->etime = 0;
   p->scount = 0;
   p->static_priority = 0;
@@ -555,6 +557,7 @@ update_time()
     acquire(&p->lock);
     if (p->state == RUNNING) {
       p->rtime ++;
+      p->pbsrtime++;
 #if SCHEDULER == S_MLFQ
       p->cqrtime++;
 #endif
@@ -721,9 +724,9 @@ scheduler(void)
       c->proc = highest_priority_proc;
       swtch(&c->context, &highest_priority_proc->context);
       c->proc = 0;
-      if (highest_priority_proc->rtime + highest_priority_proc->stime != 0)
-        highest_priority_proc->niceness = (int)((10*(highest_priority_proc->stime))/(highest_priority_proc->rtime + highest_priority_proc->stime));
-      // printf("RAN PROC with pid: %d, RUN TIME: %d, SLEEP TIME: %d, NICENESS: %d\n", highest_priority_proc->pid, highest_priority_proc->rtime, highest_priority_proc->stime, highest_priority_proc->niceness);
+      if (highest_priority_proc->pbsrtime + highest_priority_proc->stime != 0)
+        highest_priority_proc->niceness = (int)((10*(highest_priority_proc->stime))/(highest_priority_proc->pbsrtime + highest_priority_proc->stime));
+      // printf("RAN PROC with pid: %d, RUN TIME: %d, SLEEP TIME: %d, NICENESS: %d\n", highest_priority_proc->pid, highest_priority_proc->pbsrtime, highest_priority_proc->stime, highest_priority_proc->niceness);
     }
     release(&highest_priority_proc->lock);
 
@@ -1059,6 +1062,8 @@ set_priority(int new_priority, int pid)
 
       // Reset values
       p->niceness = 5;
+      p->pbsrtime = 0;
+      p->stime = 0;
 
       release(&p->lock);
       if (new_priority < old_priority) {

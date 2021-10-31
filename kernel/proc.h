@@ -117,6 +117,9 @@ struct proc {
   // How many times it has been scheduled
   int scount;
 
+  // Run time for PBS
+  int pbsrtime;
+
   // Mask for what system calls to trace
   int tracemask;
   // The static priority of the process for PBS
